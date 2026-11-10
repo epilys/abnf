@@ -6,13 +6,13 @@
 //! ```
 //! use abnf::types::*;
 //!
-//! let rule = Rule::new("test", Node::alternatives(&[
-//!     Node::rulename("A"),
-//!     Node::concatenation(&[
-//!         Node::rulename("B"),
-//!         Node::rulename("C")
-//!     ])
-//! ]));
+//! let rule = Rule::new(
+//!     "test",
+//!     Node::alternatives(&[
+//!         Node::rulename("A"),
+//!         Node::concatenation(&[Node::rulename("B"), Node::rulename("C")]),
+//!     ]),
+//! );
 //!
 //! println!("{}", rule); // prints "test = A / B C"
 //! ```

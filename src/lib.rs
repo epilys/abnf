@@ -23,7 +23,7 @@
 //!         for rule in &rules {
 //!             println!("{:#?}\n", rule);
 //!         }
-//!     },
+//!     }
 //!     Err(error) => eprintln!("{}", error),
 //! }
 //! ```
@@ -43,6 +43,8 @@ use nom::{
 use crate::types::*;
 
 pub mod error;
+#[cfg(feature = "generate")]
+pub mod generate;
 pub mod types;
 
 /// Parses a list of multiple ABNF rules.
@@ -89,8 +91,8 @@ pub fn rulelist(input: &str) -> Result<Vec<Rule>, crate::error::ParseError> {
 /// use abnf::rule;
 ///
 /// match rule("a = b / c / *d") {
-///    Ok(rules) => println!("{:#?}", rules),
-///    Err(error) => eprintln!("{}", error),
+///     Ok(rules) => println!("{:#?}", rules),
+///     Err(error) => eprintln!("{}", error),
 /// }
 /// ```
 pub fn rule(input: &str) -> Result<Rule, crate::error::ParseError> {
@@ -130,21 +132,21 @@ fn rulelist_internal<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a 
 ///         ; continues if next line starts
 ///         ;  with white space
 /// ```
-fn rule_internal<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, Rule, E> {
+fn rule_internal<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Rule, E> {
     let mut parser = tuple((rulename, defined_as, elements, c_nl));
 
     let (input, (name, definition, elements, _)) = parser(input)?;
 
     let rule = match definition {
-        Kind::Basic => Rule::new(&name, elements),
-        Kind::Incremental => Rule::incremental(&name, elements),
+        Kind::Basic => Rule::new(name, elements),
+        Kind::Incremental => Rule::incremental(name, elements),
     };
 
     Ok((input, rule))
 }
 
 /// Whitespace and comments before rule allowed, no trailing newline required.
-fn rule_internal_single<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, Rule, E> {
+fn rule_internal_single<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Rule, E> {
     let mut parser = tuple((
         many0(alt((c_nl, recognize(WSP)))),
         rulename,
@@ -156,8 +158,8 @@ fn rule_internal_single<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&
     let (input, (_, name, definition, elements, _)) = parser(input)?;
 
     let rule = match definition {
-        Kind::Basic => Rule::new(&name, elements),
-        Kind::Incremental => Rule::incremental(&name, elements),
+        Kind::Basic => Rule::new(name, elements),
+        Kind::Incremental => Rule::incremental(name, elements),
     };
 
     Ok((input, rule))
@@ -166,7 +168,7 @@ fn rule_internal_single<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&
 /// ```abnf
 /// rulename = ALPHA *(ALPHA / DIGIT / "-")
 /// ```
-fn rulename<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &str, E> {
+fn rulename<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
     let is_valid = |x| is_ALPHA(x) || is_DIGIT(x) || x == '-';
 
     recognize(tuple((ALPHA, take_while(is_valid))))(input)
@@ -304,7 +306,7 @@ fn option<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Node, 
 /// ```abnf
 /// char-val = case-insensitive-string / case-sensitive-string
 /// ```
-fn char_val<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, StringLiteral, E> {
+fn char_val<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, StringLiteral, E> {
     alt((
         map(case_insensitive_string, |str| {
             StringLiteral::case_insensitive(str.to_owned())
@@ -320,7 +322,7 @@ fn char_val<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, StringL
 /// ```
 fn case_insensitive_string<'a, E: ParseError<&'a str>>(
     input: &'a str,
-) -> IResult<&'a str, &str, E> {
+) -> IResult<&'a str, &'a str, E> {
     let marker = preceded(char('%'), alt((char('i'), char('I'))));
     preceded(opt(marker), quoted_string)(input)
 }
@@ -328,7 +330,9 @@ fn case_insensitive_string<'a, E: ParseError<&'a str>>(
 /// ```abnf
 /// case-sensitive-string = "%s" quoted-string
 /// ```
-fn case_sensitive_string<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &str, E> {
+fn case_sensitive_string<'a, E: ParseError<&'a str>>(
+    input: &'a str,
+) -> IResult<&'a str, &'a str, E> {
     let marker = preceded(char('%'), alt((char('s'), char('S'))));
     preceded(marker, quoted_string)(input)
 }
@@ -338,7 +342,7 @@ fn case_sensitive_string<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<
 /// ```abnf
 /// quoted-string = DQUOTE *(%x20-21 / %x23-7E) DQUOTE
 /// ```
-fn quoted_string<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &str, E> {
+fn quoted_string<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
     let is_inner = |x| matches!(x, '\x20'..='\x21' | '\x23'..='\x7E');
 
     delimited(DQUOTE, take_while(is_inner), DQUOTE)(input)
@@ -415,7 +419,7 @@ fn hex_val<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Termi
 /// ```abnf
 /// prose-val = "<" *(%x20-3D / %x3F-7E) ">"
 /// ```
-fn prose_val<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &str, E> {
+fn prose_val<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
     let is_inner = |x| matches!(x, '\x20'..='\x3D' | '\x3F'..='\x7E');
 
     delimited(char('<'), take_while(is_inner), char('>'))(input)
@@ -462,7 +466,7 @@ fn bin_u32<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, u32, 
 
 fn dec_u32<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, u32, E> {
     let (remaining, out) = take_while1(is_DIGIT)(input)?;
-    match u32::from_str_radix(out, 10) {
+    match out.parse::<u32>() {
         Ok(num) => Ok((remaining, num)),
         Err(_) => Err(nom::Err::Failure(nom::error::make_error(
             // FIXME: use error
@@ -474,7 +478,7 @@ fn dec_u32<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, u32, 
 
 fn dec_usize<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, usize, E> {
     let (remaining, out) = take_while1(is_DIGIT)(input)?;
-    match usize::from_str_radix(out, 10) {
+    match out.parse::<usize>() {
         Ok(num) => Ok((remaining, num)),
         Err(_) => Err(nom::Err::Failure(nom::error::make_error(
             // FIXME: use error
@@ -501,7 +505,7 @@ mod tests {
     use nom::error::VerboseError;
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
-    use rand::{distributions::Distribution, seq::SliceRandom, thread_rng, Rng};
+    use rand::{distr::Distribution, prelude::*, seq::SliceRandom, thread_rng, Rng};
 
     use super::*;
 
@@ -574,9 +578,7 @@ mod tests {
 
             let len = rand_distr::Binomial::new(20, 0.3).unwrap().sample(&mut rng) as usize;
             let value = StringDistribution.sample_iter(&mut rng).take(len).collect();
-            let case_sensitive = rand::distributions::Bernoulli::new(0.5)
-                .unwrap()
-                .sample(&mut rng);
+            let case_sensitive = rand::distr::Bernoulli::new(0.5).unwrap().sample(&mut rng);
 
             Self::new(value, case_sensitive)
         }
